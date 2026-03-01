@@ -760,7 +760,7 @@ function AiFundManagerPanel({ result, loading, onRefresh }) {
       {!loading && result && !result.error && !result.noKey && (
         <div style={{ display: "grid", gap: 8 }}>
           {/* 3-column top row */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+          <div className="grid-ai-cols">
             {sections.map(s => (
               <div key={s.key} style={{ background: `${s.color}08`, border: `1px solid ${s.color}20`, borderRadius: 10, padding: "10px 12px" }}>
                 <div style={{ fontSize: 8, color: s.color, letterSpacing: 1, marginBottom: 6, fontWeight: 700 }}>{s.label}</div>
@@ -1025,7 +1025,7 @@ function SmartChatbox({ ticker, data, apiKey, open, onToggle }) {
   if (!open) return null;
 
   return (
-    <div style={{ position: "fixed", bottom: 80, right: 16, width: 340, height: 480, background: "#0f1117", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, display: "flex", flexDirection: "column", zIndex: 1000, boxShadow: "0 20px 60px rgba(0,0,0,0.8)", animation: "fadeUp 0.3s ease" }}>
+    <div className="chatbox-wrap" style={{ background: "#0f1117", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, display: "flex", flexDirection: "column", zIndex: 1000, boxShadow: "0 20px 60px rgba(0,0,0,0.8)", animation: "fadeUp 0.3s ease" }}>
       {/* Header */}
       <div style={{ padding: "12px 14px", borderBottom: "1px solid rgba(255,255,255,0.07)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(245,200,66,0.05)", borderRadius: "16px 16px 0 0" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1425,6 +1425,30 @@ export default function App() {
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
         ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1)}
         select option{background:#0f1117;color:#fff}
+
+        /* ── RESPONSIVE CLASSES ─────────────────────────── */
+        .grid-score   { display:grid; grid-template-columns:190px 1fr; gap:14px; margin-bottom:14px; }
+        .grid-stats   { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; align-content:start; }
+        .grid-pillars { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }
+        .grid-ai-cols { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+        .grid-signals { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+        .grid-tech    { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+        .chatbox-wrap { position:fixed; bottom:80px; right:16px; width:340px; height:480px; }
+        .apikey-popup { position:absolute; top:30px; right:0; width:290px; }
+
+        @media (max-width: 640px) {
+          .grid-score   { grid-template-columns:1fr; }
+          .grid-stats   { grid-template-columns:repeat(2,1fr); }
+          .grid-pillars { grid-template-columns:1fr; }
+          .grid-ai-cols { grid-template-columns:1fr; }
+          .grid-signals { grid-template-columns:1fr; }
+          .grid-tech    { grid-template-columns:1fr; }
+          .chatbox-wrap { right:0; left:0; width:100%; bottom:70px; height:60vh; border-radius:16px 16px 0 0; }
+          .apikey-popup { right:0; width:calc(100vw - 32px); max-width:340px; }
+          .score-num    { font-size:44px !important; }
+          .mob-p        { padding:14px 10px !important; }
+          .mob-inner    { padding:0 2px !important; }
+        }
       `}</style>
 
       {/* HEADER */}
@@ -1432,7 +1456,7 @@ export default function App() {
         <div style={{ position: "absolute", top: 0, right: 0 }}>
           <button onClick={() => setShowKeyInput(!showKeyInput)} style={{ background: "transparent", border: "none", color: geminiKey ? "#4ade80" : "rgba(255,255,255,0.3)", fontSize: 18, cursor: "pointer" }} title="Pengaturan AI Gemini">⚙️</button>
           {showKeyInput && (
-            <div style={{ position: "absolute", top: 30, right: 0, background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: 14, width: 290, zIndex: 50, textAlign: "left", boxShadow: "0 10px 25px rgba(0,0,0,0.5)" }}>
+            <div className="apikey-popup" style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: 14, zIndex: 50, textAlign: "left", boxShadow: "0 10px 25px rgba(0,0,0,0.5)" }}>
               <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", marginBottom: 8, fontWeight: 700 }}>🔑 API Key Google Gemini</div>
               <input type="password" value={geminiKey} onChange={e => saveGeminiKey(e.target.value)}
                 placeholder="AIzaSy..."
@@ -1588,11 +1612,11 @@ export default function App() {
           <div style={{ animation: "fadeUp 0.4s ease" }}>
 
             {/* Row 1: Score + Price */}
-            <div style={{ display: "grid", gridTemplateColumns: "190px 1fr", gap: 14, marginBottom: 14 }}>
+            <div className="grid-score">
               <div style={{ background: `${grade.color}0d`, border: `1.5px solid ${grade.color}28`, borderRadius: 14, padding: 16, textAlign: "center", position: "relative", overflow: "hidden" }}>
                 <div style={{ position: "absolute", inset: 0, background: `radial-gradient(circle at 50% 0%,${grade.color}12,transparent 60%)`, pointerEvents: "none" }} />
                 <div style={{ fontSize: 7, letterSpacing: 3, color: `${grade.color}60`, marginBottom: 5 }}>COMPOSITE SCORE</div>
-                <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 60, fontWeight: 900, color: grade.color, lineHeight: 1, textShadow: `0 0 35px ${grade.color}40` }}>{sc.comp}</div>
+                <div className="score-num" style={{ fontFamily: "'Playfair Display',serif", fontSize: 60, fontWeight: 900, color: grade.color, lineHeight: 1, textShadow: `0 0 35px ${grade.color}40` }}>{sc.comp}</div>
                 <div style={{ fontSize: 8, color: "rgba(255,255,255,0.15)", marginBottom: 10 }}>/100</div>
                 <div style={{ display: "inline-block", padding: "5px 16px", borderRadius: 100, background: `${grade.color}15`, border: `1.5px solid ${grade.color}50`, fontSize: 9, fontWeight: 700, color: grade.color, letterSpacing: 2 }}>
                   {grade.icon} {grade.label}
@@ -1601,7 +1625,7 @@ export default function App() {
                 <div style={{ fontSize: 7, color: "rgba(255,255,255,0.2)", marginTop: 2, lineHeight: 1.4 }}>{data.name}</div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, alignContent: "start" }}>
+              <div className="grid-stats">
                 <StatBox label="HARGA TERAKHIR" value={`Rp ${fmt(data.currentPrice)}`}
                   sub={`${chPct >= 0 ? "+" : ""}${fmtDec(chPct)}% · Vol ${(data.todayVol / 1e6).toFixed(1)}M`}
                   color={chPct >= 0 ? "#4ade80" : "#f87171"} hi />
@@ -1641,7 +1665,7 @@ export default function App() {
             </div>
 
             {/* Row 3: 3 Pillars */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+            <div className="grid-pillars">
               <div style={card}>
                 <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", letterSpacing: 3, marginBottom: 14 }}>◈ SKOR 3 PILAR</div>
                 <div style={{ display: "flex", justifyContent: "space-around" }}>
@@ -1745,7 +1769,7 @@ export default function App() {
             {/* Technical Analysis */}
             <div style={card}>
               <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", letterSpacing: 3, marginBottom: 14 }}>◈ ANALISIS TEKNIKAL — DIHITUNG DARI CANDLESTICK 2 TAHUN</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              <div className="grid-tech">
                 <div>
                   {/* RSI */}
                   <div style={{ marginBottom: 14 }}>
@@ -1872,7 +1896,7 @@ export default function App() {
             {/* Signal summary */}
             <div style={{ ...card, padding: "12px 14px" }}>
               <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", letterSpacing: 3, marginBottom: 10 }}>◈ SINYAL AKTIF SAAT INI</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div className="grid-signals">
                 {[
                   { cond: data.rsi < 30, txt: "RSI Oversold — Harga menukik tajam, potensi reversal teknikal", c: "#4ade80" },
                   { cond: data.rsi > 70, txt: "RSI Overbought — Harga rawan koreksi, hindari kejar pucuk", c: "#fb923c" },
