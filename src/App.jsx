@@ -359,7 +359,8 @@ async function fetchStockRealtime(ticker) {
         'price_earnings_ttm', 'price_book_ratio',
         'return_on_equity', 'return_on_assets', 'debt_to_equity',
         'earnings_per_share_basic_ttm', 'market_cap_basic', 'dividend_yield_recent',
-        'Recommend.All', 'Recommend.All|15', 'Recommend.All|60', 'Recommend.All|1W'
+        'Recommend.All', 'Recommend.All|15', 'Recommend.All|60', 'Recommend.All|1W',
+        'earnings_per_share_diluted_yoy_growth_ttm', 'total_revenue', 'net_income'
       ]
     };
     const tvRaw = await fetch('https://scanner.tradingview.com/indonesia/scan', {
@@ -370,8 +371,9 @@ async function fetchStockRealtime(ticker) {
       const d = tvJson?.data?.[0]?.d;
       if (d) {
         fund.pe = nf(d[0]); fund.pbv = nf(d[1]); fund.roe = nf(d[2]);
-        fund.roa = nf(d[3]); fund.der = nf(d[4]) / 100; fund.eps = nf(d[5]);
+        fund.roa = nf(d[3]); fund.der = nf(d[4]); fund.eps = nf(d[5]);
         fund.marketCap = nf(d[6]); fund.divYield = nf(d[7]);
+        fund.epsGrowth = nf(d[12]); fund.revenue = nf(d[13]); fund.netIncome = nf(d[14]);
         const getSig = (val) => val > 0.5 ? "STRONG BUY" : val > 0.1 ? "BUY" : val >= -0.1 ? "NEUTRAL" : val >= -0.5 ? "SELL" : "STRONG SELL";
         fund.analystRec = getSig(nf(d[8]));
         fund.tvAdvice = {
@@ -1314,8 +1316,8 @@ export default function App() {
 
   const getCached = async (t) => {
     try {
-      const r = typeof window.storage !== "undefined" ? await window.storage.get(`bei:${t}`) : null;
-      const v = r?.value || localStorage.getItem(`bei:${t}`);
+      const r = typeof window.storage !== "undefined" ? await window.storage.get(`bei_v2:${t}`) : null;
+      const v = r?.value || localStorage.getItem(`bei_v2:${t}`);
       if (!v) return null;
       const p = JSON.parse(v);
       if (Date.now() - p.ts < CACHE_TTL) return p.d;
@@ -1325,8 +1327,8 @@ export default function App() {
 
   const setCache = async (t, d) => {
     const val = JSON.stringify({ ts: Date.now(), d });
-    try { if (typeof window.storage !== "undefined") await window.storage.set(`bei:${t}`, val); } catch (_) { }
-    try { localStorage.setItem(`bei:${t}`, val); } catch (_) { }
+    try { if (typeof window.storage !== "undefined") await window.storage.set(`bei_v2:${t}`, val); } catch (_) { }
+    try { localStorage.setItem(`bei_v2:${t}`, val); } catch (_) { }
   };
 
   const pushHist = async (t, d, sc) => {
