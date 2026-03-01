@@ -1291,12 +1291,14 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        const r = await window.storage.get("bei_hist");
-        if (r?.value) setHistory(JSON.parse(r.value));
+        const r = typeof window.storage !== "undefined" ? await window.storage.get("bei_hist") : null;
+        const val = r?.value || localStorage.getItem("bei_hist");
+        if (val) setHistory(JSON.parse(val));
       } catch (_) { }
       try {
-        const k = await window.storage.get("gemini_key");
-        if (k?.value) setGeminiKey(k.value);
+        const k = typeof window.storage !== "undefined" ? await window.storage.get("gemini_key") : null;
+        const val = k?.value || localStorage.getItem("gemini_key");
+        if (val) setGeminiKey(val);
       } catch (_) { }
     })();
     mktRef.current = setInterval(() => setMktStatus(getMarketStatus()), 30000);
@@ -1306,21 +1308,25 @@ export default function App() {
 
   const saveGeminiKey = async (val) => {
     setGeminiKey(val);
-    try { await window.storage.set("gemini_key", val); } catch (_) { }
+    try { if (typeof window.storage !== "undefined") await window.storage.set("gemini_key", val); } catch (_) { }
+    try { localStorage.setItem("gemini_key", val); } catch (_) { }
   };
 
   const getCached = async (t) => {
     try {
-      const r = await window.storage.get(`bei:${t}`);
-      if (!r?.value) return null;
-      const p = JSON.parse(r.value);
+      const r = typeof window.storage !== "undefined" ? await window.storage.get(`bei:${t}`) : null;
+      const v = r?.value || localStorage.getItem(`bei:${t}`);
+      if (!v) return null;
+      const p = JSON.parse(v);
       if (Date.now() - p.ts < CACHE_TTL) return p.d;
     } catch (_) { }
     return null;
   };
 
   const setCache = async (t, d) => {
-    try { await window.storage.set(`bei:${t}`, JSON.stringify({ ts: Date.now(), d })); } catch (_) { }
+    const val = JSON.stringify({ ts: Date.now(), d });
+    try { if (typeof window.storage !== "undefined") await window.storage.set(`bei:${t}`, val); } catch (_) { }
+    try { localStorage.setItem(`bei:${t}`, val); } catch (_) { }
   };
 
   const pushHist = async (t, d, sc) => {
@@ -1329,7 +1335,9 @@ export default function App() {
     const e = { ticker: t, name: d.name, comp: sc.comp, color: g.color, sc: sec.color };
     const next = [e, ...history.filter(h => h.ticker !== t)].slice(0, 8);
     setHistory(next);
-    try { await window.storage.set("bei_hist", JSON.stringify(next)); } catch (_) { }
+    const val = JSON.stringify(next);
+    try { if (typeof window.storage !== "undefined") await window.storage.set("bei_hist", val); } catch (_) { }
+    try { localStorage.setItem("bei_hist", val); } catch (_) { }
   };
 
   const runAiAnalysis = async (t, d) => {
