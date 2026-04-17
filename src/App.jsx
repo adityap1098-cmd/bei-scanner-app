@@ -152,7 +152,35 @@ function calcScores(d, sector) {
 }
 
 // ─── YAHOO FINANCE FETCH ──────────────────────────────────────────────────────
+// ─── PROXY ROUTING ───────────────────────────────────────────────────────────
+// Dev  (npm run dev): Vite server proxy  → target API server-to-server, no CORS
+// Prod (Vercel):      /api/yf & /api/tv  → Vercel serverless fn  server-to-server, no CORS
+// Public CORS proxies (allorigins etc.) block requests from localhost; kept as last resort for other hosts.
+const TV_SCAN_URL = import.meta.env.DEV
+  ? '/tv-proxy/indonesia/scan'   // Vite proxy → scanner.tradingview.com
+  : '/api/tv';                   // Vercel fn  → scanner.tradingview.com
+
 async function fetchYF(url) {
+  if (import.meta.env.DEV) {
+    // Dev: Vite proxy rewrites /yf-proxy → query1.finance.yahoo.com (server-side)
+    const localUrl = url
+      .replace('https://query1.finance.yahoo.com', '/yf-proxy')
+      .replace('https://query2.finance.yahoo.com', '/yf-proxy');
+    try {
+      const r = await fetch(localUrl, { headers: { Accept: 'application/json' } });
+      if (r.ok) { const j = await r.json(); if (j) return j; }
+    } catch (_) { /* fall through */ }
+  } else {
+    // Prod: Vercel serverless function — no CORS, validates host server-side
+    try {
+      const r = await fetch(`/api/yf?url=${encodeURIComponent(url)}`, {
+        headers: { Accept: 'application/json' },
+      });
+      if (r.ok) { const j = await r.json(); if (j) return j; }
+    } catch (_) { /* fall through to external proxies */ }
+  }
+
+  // Last resort: public CORS proxies (work on deployed non-localhost domains)
   const proxies = [
     `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
     `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
@@ -279,6 +307,63 @@ async function fetchNewsHeadlines(ticker, companyName) {
   return unique.sort((a, b) => (b.time || 0) - (a.time || 0)).slice(0, 12);
 }
 
+// ─── LIVE INTRADAY PRICE FETCH (untuk auto-refresh saat market buka) ──────────
+// Menggunakan interval=1m agar mendapat harga aktual menit terakhir
+async function fetchLivePrice(ticker) {
+  const sym = `${ticker}.JK`;
+  // interval=1m range=1d → data menit-per-menit hari ini
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1m&range=1d&includePrePost=false`;
+  try {
+    const raw = await fetchYF(url);
+    const result = raw?.chart?.result?.[0];
+    if (!result) return null;
+
+    const meta = result.meta || {};
+    const q = result.indicators?.quote?.[0];
+    const ts = result.timestamp || [];
+
+    // Ambil only valid candles (close tidak null)
+    const validIdx = ts.map((_, i) => i).filter(i => q?.close?.[i] != null);
+    if (validIdx.length < 2) return null;
+
+    const closes = validIdx.map(i => q.close[i]);
+    const highs = validIdx.map(i => q.high[i] ?? q.close[i]);
+    const lows = validIdx.map(i => q.low[i] ?? q.close[i]);
+    const volumes = validIdx.map(i => q.volume[i] ?? 0);
+
+    // Harga terkini = candle 1m terakhir
+    const currentPrice = closes[closes.length - 1];
+    // prevClose = close kemarin (dari meta)
+    const prevClose = meta.chartPreviousClose || meta.previousClose || closes[0];
+    const change1dPct = ((currentPrice - prevClose) / prevClose) * 100;
+
+    // High/Low intraday hari ini
+    const dayHigh = Math.max(...highs);
+    const dayLow = Math.min(...lows);
+
+    // Volume total hari ini
+    const todayVol = volumes.reduce((a, b) => a + b, 0);
+
+    // RSI dari close intraday (lebih sensitif / real-time)
+    const rsiIntraday = closes.length >= 16 ? calcRSI(closes) : null;
+
+    // Volume rata-rata intraday (perkiraan, dibandingkan vol sesi sehari normal)
+    // Kita tidak punya avgVol20 di sini, jadi kembalikan null → pakai yg lama
+    return {
+      currentPrice,
+      prevClose,
+      change1dPct,
+      dayHigh,
+      dayLow,
+      todayVol,
+      currentOpen: closes[0],
+      rsiIntraday,   // gunakan ini untuk update RSI saat market buka
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
 // ─── MAIN DATA FETCH ──────────────────────────────────────────────────────────
 async function fetchStockRealtime(ticker) {
   const sym = `${ticker}.JK`;
@@ -363,7 +448,7 @@ async function fetchStockRealtime(ticker) {
         'earnings_per_share_diluted_yoy_growth_ttm', 'total_revenue', 'net_income'
       ]
     };
-    const tvRaw = await fetch('https://scanner.tradingview.com/indonesia/scan', {
+    const tvRaw = await fetch(TV_SCAN_URL, {
       method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(body)
     });
     if (tvRaw.ok) {
@@ -428,7 +513,7 @@ async function fetchExploreData() {
   ];
   try {
     const res = await Promise.all(reqs.map(body =>
-      fetch("https://scanner.tradingview.com/indonesia/scan", { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify(body) })
+      fetch(TV_SCAN_URL, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify(body) })
         .then(r => r.json())
     ));
     const mapD = (x) => ({ ticker: x.s.replace("IDX:", ""), name: x.d[0], rec: x.d[1], price: x.d[2], chg: x.d[3] });
@@ -1269,6 +1354,10 @@ export default function App() {
   const [history, setHistory] = useState([]);
   const [mktStatus, setMktStatus] = useState(getMarketStatus());
   const timerRef = useRef(null);
+  const autoRefreshRef = useRef(null);
+  const countdownRef = useRef(null);
+  const [autoRefreshCountdown, setAutoRefreshCountdown] = useState(30);
+  const AUTO_REFRESH_INTERVAL = 30; // seconds
   const [exploreData, setExploreData] = useState(null);
   const mktRef = useRef(null);
 
@@ -1305,7 +1394,11 @@ export default function App() {
     })();
     mktRef.current = setInterval(() => setMktStatus(getMarketStatus()), 30000);
     fetchExploreData().then(setExploreData);
-    return () => clearInterval(mktRef.current);
+    return () => {
+      clearInterval(mktRef.current);
+      clearInterval(autoRefreshRef.current);
+      clearInterval(countdownRef.current);
+    };
   }, []);
 
   const saveGeminiKey = async (val) => {
@@ -1398,6 +1491,66 @@ export default function App() {
     // FIX: added geminiKey to dependency array
   }, [loading, history, geminiKey]);
 
+  // ─── AUTO-REFRESH EFFECT ────────────────────────────────────────────────────
+  useEffect(() => {
+    // Clear previous intervals
+    clearInterval(autoRefreshRef.current);
+    clearInterval(countdownRef.current);
+
+    if (!ticker) return;
+
+    // Reset countdown immediately
+    setAutoRefreshCountdown(AUTO_REFRESH_INTERVAL);
+
+    // Countdown ticker (updates every second)
+    countdownRef.current = setInterval(() => {
+      setAutoRefreshCountdown(prev => {
+        if (prev <= 1) return AUTO_REFRESH_INTERVAL;
+        return prev - 1;
+      });
+    }, 1000);
+
+    // Live price patch setiap AUTO_REFRESH_INTERVAL detik
+    // Menggunakan fetchLivePrice (interval=1m) → data harga menit terakhir saat market buka
+    autoRefreshRef.current = setInterval(() => {
+      if (loading) return;
+      const t = ticker;
+      (async () => {
+        try {
+          const live = await fetchLivePrice(t);
+          if (!live) return;
+
+          setData(prev => {
+            if (!prev) return prev;
+            // Hitung ulang volumeBreakout berdasarkan volume intraday vs avg harian
+            const volumeBreakout = prev.avgVol20 > 0
+              ? live.todayVol > prev.avgVol20 * 1.5
+              : prev.volumeBreakout;
+            // Update RSI dari data intraday jika cukup candle (lebih responsif)
+            const rsi = live.rsiIntraday != null ? live.rsiIntraday : prev.rsi;
+            return {
+              ...prev,
+              currentPrice: live.currentPrice,
+              change1dPct: live.change1dPct,
+              dayHigh: live.dayHigh,
+              dayLow: live.dayLow,
+              todayVol: live.todayVol,
+              currentOpen: live.currentOpen,
+              volumeBreakout,
+              rsi,
+              _liveAt: Date.now(),
+            };
+          });
+        } catch (_) { /* silent fail */ }
+      })();
+    }, AUTO_REFRESH_INTERVAL * 1000);
+
+    return () => {
+      clearInterval(autoRefreshRef.current);
+      clearInterval(countdownRef.current);
+    };
+  }, [ticker]);
+
   const sc = data ? calcScores(data, data.sector) : { fund: 0, tech: 0, band: 0, comp: 0 };
   const grade = getGrade(sc.comp);
   const ref = SECTOR_DATA[data?.sector] || SECTOR_DATA["Industrials"];
@@ -1433,6 +1586,7 @@ export default function App() {
         @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
         @keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
+        @keyframes livepulse{0%,100%{box-shadow:0 0 0 0 rgba(0,255,136,0.5)}70%{box-shadow:0 0 0 6px rgba(0,255,136,0)}}
         ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1)}
         select option{background:#0f1117;color:#fff}
 
@@ -1502,6 +1656,14 @@ export default function App() {
             </div>
             <div style={{ fontSize: 8, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>{mktStatus.sub}</div>
           </div>
+          {/* LIVE auto-refresh badge */}
+          {ticker && (
+            <div style={{ padding: "8px 14px", borderRadius: 10, background: "rgba(0,255,136,0.07)", border: "1px solid rgba(0,255,136,0.25)", textAlign: "center", minWidth: 90, animation: "livepulse 2s ease infinite" }}>
+              <div style={{ fontSize: 8, color: "rgba(255,255,255,0.3)", letterSpacing: 2, marginBottom: 3 }}>AUTO REFRESH</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#00ff88", fontFamily: "'IBM Plex Mono',monospace", animation: "pulse 1s ease infinite" }}>● LIVE</div>
+              <div style={{ fontSize: 8, color: "rgba(0,255,136,0.5)", marginTop: 2 }}>update dalam {autoRefreshCountdown}s</div>
+            </div>
+          )}
         </div>
       </div>
 
